@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+out/
+coupon/
+*.stl
+*.glb
+!tests/golden/*.stl

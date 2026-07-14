@@ -2,36 +2,75 @@
 
 **Turn a small STL into a large statue.**
 
-ubanL is a planned open tool in the spirit of [LuBan](https://www.luban3d.com/): it takes a
+ubanL is an open tool in the spirit of [LuBan](https://www.luban3d.com/): it takes a
 3D model that is larger than your printer's build volume (or a small model you want to
-scale way up), automatically segments it into printable pieces, generates interlocking
-connectors (pins, tenons, dovetails) at every cut so the pieces self-align during
-assembly, and exports the pieces along with a numbered assembly guide.
-
-## Status
-
-🚧 **Planning phase — no code yet.**
-
-The full technical plan, architecture, algorithm design, and roadmap live in
-[`docs/PLAN.md`](docs/PLAN.md).
-
-## Planned pipeline at a glance
+scale way up), segments it into printable pieces, generates interlocking dowel
+connectors at every cut so the pieces self-align during assembly, and exports the
+pieces along with a numbered assembly guide and an exploded 3D preview.
 
 ```
 STL in ──▶ repair ──▶ scale ──▶ cut planning ──▶ boolean cuts ──▶ connectors
                                                                       │
-STL(s) out ◀── assembly guide ◀── labeling ◀── hollowing (opt.) ◀─────┘
+STL(s) out ◀── assembly guide ◀── ID engraving ◀──────────────────────┘
 ```
 
-## Planned v1 capabilities
+## Install
 
-- Load STL/OBJ/3MF, repair to watertight, scale to a target height
-- Automatic segmentation so every piece fits a configured build volume
-- Manual cut planes for full control when you want it
-- Auto-generated connectors (dowel pins first; tenons/dovetails later) with
-  configurable clearance
-- Piece numbering engraved on interior cut faces
-- Per-piece STL export + JSON assembly manifest + 3D exploded-view preview
-- A printable calibration coupon to dial in connector tolerance for your printer
+```bash
+pip install -e .          # from a checkout
+pip install -e .[fast]    # + faster planning on huge meshes (decimation)
+```
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the why behind every choice.
+## Quick start
+
+```bash
+# what am I working with?
+ubanl info figurine.stl
+
+# scale to a 1 m statue, chop for a 220x220x250 printer, add pins + labels
+ubanl chop figurine.stl --target-height 1000 --build-volume 220x220x250 -o out/
+
+# dial in the pin fit for your printer/material first (one-time)
+ubanl coupon -o coupon/    # print both parts, pick the snuggest clearance
+ubanl chop figurine.stl --target-height 1000 --clearance 0.15 -o out/
+```
+
+Outputs in `out/`:
+
+- `P01.stl`, `P02.stl`, … — one file per piece, named in assembly order
+- `manifest.json` — piece sizes, weights, connector positions, assembly order
+- `exploded_preview.html` — interactive 3D exploded view (open in a browser)
+- `assembled.glb` — the assembled statue as one scene
+
+Every piece carries its ID engraved on a cut face (hidden after gluing), and every
+joint gets chamfered dowel pins and matching sockets with your configured clearance.
+
+## Project config
+
+Anything the flags can do (and more) lives in a YAML project file — see
+[`examples/statue.yaml`](examples/statue.yaml):
+
+```bash
+ubanl chop examples/statue.yaml
+```
+
+## Planners
+
+| mode | what it does |
+|---|---|
+| `auto` (default) | Greedy BSP search: minimizes piece count, keeps every joint big enough for pins, avoids sliver cuts; falls back to the grid plan if that's ever better |
+| `grid` | Axis-aligned cuts at build-volume intervals; predictable and always feasible |
+| `manual` | You list the planes (`{axis: z, position: 400}` or point + normal) |
+
+## Status
+
+v0.1 implements the plan's milestones M0–M2 plus the first pass of M3 (auto planner)
+and M4 (exploded preview). See [`docs/PLAN.md`](docs/PLAN.md) for the full design and
+what's next (tenon/dovetail connectors, seam-aware planning, hollowing, plate packing).
+
+## Development
+
+```bash
+pip install -e .[dev]
+pytest            # property tests: watertightness, volume conservation, fit, clearance
+```

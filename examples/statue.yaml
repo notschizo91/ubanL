@@ -1,0 +1,31 @@
+# Example ubanl project: scale a figurine to a 1 m statue for a 220x220x250 printer.
+# Run with:  ubanl chop examples/statue.yaml
+input: figurine.stl            # relative to this file
+target_height_mm: 1000
+
+printer:
+  build_volume_mm: [220, 220, 250]
+  margin_mm: 5
+  clearance_mm: 0.20           # calibrate with `ubanl coupon`
+
+planner:
+  mode: auto                   # auto | grid | manual
+  # manual mode example:
+  # planes:
+  #   - { axis: z, position: 400 }
+  #   - { origin: [0, 0, 700], normal: [0, 0.2, 1] }
+
+connectors:
+  diameter_mm: 8
+  length_mm: 8
+  min_count: 2
+  max_count: 4
+
+labels:
+  enabled: true
+  height_mm: 8
+
+output:
+  dir: out
+  formats: [stl]
+  preview: true                # exploded_preview.html + assembled.glb
