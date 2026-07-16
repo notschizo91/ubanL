@@ -53,9 +53,17 @@ def scale_to_target(mesh: trimesh.Trimesh, cfg: ProjectConfig) -> float:
     return factor
 
 
-def run(cfg: ProjectConfig) -> RunResult:
+def run(cfg: ProjectConfig, on_stage=None) -> RunResult:
+    """Run the pipeline; `on_stage(name)` is called as each stage starts."""
+
+    def stage(name: str) -> None:
+        if on_stage is not None:
+            on_stage(name)
+
+    stage("loading")
     log.info("loading %s", cfg.input)
     mesh = load_mesh(cfg.input)
+    stage("repairing")
     mesh = ensure_solid(mesh, mode=cfg.repair, voxel_pitch_fraction=cfg.voxel_pitch_fraction)
     scale_applied = scale_to_target(mesh, cfg)
     log.info(
@@ -63,6 +71,7 @@ def run(cfg: ProjectConfig) -> RunResult:
         *mesh.extents, mesh.volume / 1000.0, scale_applied,
     )
 
+    stage("segmenting")
     seg = segment(mesh, cfg.planner, cfg.printer, cfg.connectors, seed=cfg.seed)
     log.info("segmented into %d piece(s), %d interface(s)", len(seg.pieces), len(seg.interfaces))
 
@@ -70,14 +79,17 @@ def run(cfg: ProjectConfig) -> RunResult:
     if volume_error > 1e-3:
         seg.warnings.append(f"volume drift after cutting: {volume_error:.2%}")
 
+    stage("placing connectors")
     connectors = place_connectors(seg, cfg.connectors, cfg.printer, seed=cfg.seed)
     apply_connectors(seg, connectors, cfg.connectors, cfg.printer)
     log.info("placed %d connector(s)", len(connectors.connectors))
 
+    stage("engraving labels")
     order = assign_labels(seg)
     label_warnings = engrave_labels(seg, connectors, cfg.labels)
     seg.warnings.extend(label_warnings)
 
+    stage("exporting")
     files = write_outputs(seg, connectors, cfg, order, scale_applied)
     for warning in seg.warnings + connectors.warnings:
         log.warning("%s", warning)

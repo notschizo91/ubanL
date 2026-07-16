@@ -94,6 +94,13 @@ def _cmd_coupon(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .server import serve
+
+    serve(host=args.host, port=args.port, open_browser=not args.no_open)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ubanl",
@@ -125,6 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_coupon.add_argument("--length", type=float, default=8.0)
     p_coupon.add_argument("-o", "--out", default="coupon")
     p_coupon.set_defaults(fn=_cmd_coupon)
+
+    p_serve = sub.add_parser("serve", help="start the local web UI")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument("--no-open", action="store_true", help="don't open the browser")
+    p_serve.set_defaults(fn=_cmd_serve)
     return parser
 
 

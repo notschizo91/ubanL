@@ -21,7 +21,18 @@ pip install -e .          # from a checkout
 pip install -e .[fast]    # + faster planning on huge meshes (decimation)
 ```
 
-## Quick start
+## Quick start — web UI
+
+```bash
+ubanl serve
+```
+
+Opens a local web app at `http://127.0.0.1:8000`: drag in a model, pick a target
+height and printer, hit **Chop it**, inspect the pieces in an interactive exploded
+3D view, and download individual STLs or everything as a zip (three.js is bundled —
+no internet needed). The calibration coupon is one click away in the sidebar.
+
+## Quick start — CLI
 
 ```bash
 # what am I working with?

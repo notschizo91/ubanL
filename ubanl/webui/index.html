@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>ubanL — chop big models into printable pieces</title>
+<style>
+  :root {
+    --bg: #12151a; --panel: #1b2027; --panel2: #232a33; --line: #303945;
+    --text: #e6ebf0; --dim: #93a1b1; --accent: #4da3ff; --ok: #38c172; --warn: #e8a33d; --err: #e35d5d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; display: flex; }
+  aside { width: 330px; min-width: 330px; background: var(--panel); border-right: 1px solid var(--line);
+          padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .4px; }
+  h1 span { color: var(--accent); }
+  .tagline { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 12px; margin: 0; }
+  legend { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; padding: 0 6px; }
+  label { display: block; color: var(--dim); font-size: 12px; margin: 8px 0 3px; }
+  input[type=number], input[type=text], select {
+    width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 9px; font-size: 13px; }
+  input:focus, select:focus { outline: 1px solid var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > div { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--text); font-size: 13px; }
+  .check input { width: auto; }
+  button { background: var(--accent); color: #08111c; font-weight: 600; border: 0; border-radius: 8px;
+           padding: 10px 12px; font-size: 14px; cursor: pointer; width: 100%; }
+  button:disabled { background: #33414f; color: #7b8b9b; cursor: not-allowed; }
+  button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px 12px; text-align: center;
+          color: var(--dim); cursor: pointer; transition: border-color .15s, color .15s; }
+  #drop.armed { border-color: var(--accent); color: var(--text); }
+  #drop strong { color: var(--text); }
+  #modelInfo { font-size: 12px; color: var(--dim); white-space: pre-line; }
+  #status { font-size: 13px; min-height: 20px; }
+  #status .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent);
+                  border-top-color: transparent; border-radius: 50%; animation: r 0.8s linear infinite;
+                  vertical-align: -2px; margin-right: 7px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+  #viewerWrap { flex: 1; position: relative; min-height: 0; }
+  #viewer { position: absolute; inset: 0; }
+  #viewerHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                color: #4a5766; font-size: 15px; pointer-events: none; }
+  #explodeBar { display: none; position: absolute; left: 50%; transform: translateX(-50%);
+                bottom: 14px; background: rgba(20,25,32,.85); border: 1px solid var(--line);
+                border-radius: 10px; padding: 8px 16px; align-items: center; gap: 10px; width: min(440px, 80%); }
+  #explodeBar label { margin: 0; white-space: nowrap; }
+  #explodeBar input { width: 100%; accent-color: var(--accent); }
+  #results { display: none; max-height: 40%; overflow-y: auto; border-top: 1px solid var(--line);
+             background: var(--panel); padding: 12px 18px; }
+  #results h2 { font-size: 13px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase; letter-spacing: .8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  tr.piece { cursor: default; }
+  tr.piece:hover { background: var(--panel2); }
+  td a { color: var(--accent); text-decoration: none; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; }
+  .chip.ok { background: rgba(56,193,114,.15); }
+  .chip.bad { background: rgba(227,93,93,.2); color: var(--err); }
+  #warnings { margin-top: 10px; font-size: 12px; color: var(--warn); white-space: pre-line; }
+  #downloadRow { display: none; gap: 8px; margin-top: 10px; }
+  #downloadRow button { flex: 1; }
+</style>
+</head>
+<body>
+<aside>
+  <div>
+    <h1>uban<span>L</span></h1>
+    <div class="tagline">chop big models into printable, pinned pieces</div>
+  </div>
+
+  <div id="drop">
+    <strong>Drop a model here</strong><br>or click to choose<br>
+    <span style="font-size:11px">STL · OBJ · 3MF · PLY</span>
+    <input id="file" type="file" accept=".stl,.obj,.3mf,.ply,.off,.glb" hidden>
+  </div>
+  <div id="modelInfo"></div>
+
+  <fieldset>
+    <legend>Size</legend>
+    <label for="height">Target height (mm) — empty keeps original size</label>
+    <input id="height" type="number" min="1" step="1" placeholder="e.g. 1000">
+  </fieldset>
+
+  <fieldset>
+    <legend>Printer</legend>
+    <label for="preset">Build volume</label>
+    <select id="preset">
+      <option value="220,220,250">220 × 220 × 250 (Ender-class)</option>
+      <option value="256,256,256">256 × 256 × 256 (X1/P1-class)</option>
+      <option value="300,300,340">300 × 300 × 340 (large)</option>
+      <option value="180,180,180">180 × 180 × 180 (mini)</option>
+      <option value="custom">custom…</option>
+    </select>
+    <div class="row" id="customVol" style="display:none; margin-top:6px">
+      <div><input id="bx" type="number" value="220" min="10"></div>
+      <div><input id="by" type="number" value="220" min="10"></div>
+      <div><input id="bz" type="number" value="250" min="10"></div>
+    </div>
+    <label for="clearance">Pin clearance (mm) — calibrate with the coupon</label>
+    <input id="clearance" type="number" value="0.20" step="0.05" min="0">
+  </fieldset>
+
+  <fieldset>
+    <legend>Cutting &amp; joints</legend>
+    <label for="mode">Planner</label>
+    <select id="mode">
+      <option value="auto">auto — fewest pieces</option>
+      <option value="grid">grid — predictable axis cuts</option>
+    </select>
+    <div class="row">
+      <div>
+        <label for="pinD">Pin Ø (mm)</label>
+        <input id="pinD" type="number" value="8" min="2" step="0.5">
+      </div>
+      <div>
+        <label for="pinL">Pin length (mm)</label>
+        <input id="pinL" type="number" value="8" min="2" step="0.5">
+      </div>
+    </div>
+    <label class="check"><input id="labels" type="checkbox" checked> engrave piece IDs on cut faces</label>
+    <label class="check"><input id="pins" type="checkbox" checked> generate pins &amp; sockets</label>
+  </fieldset>
+
+  <button id="chop" disabled>Chop it</button>
+  <div id="status"></div>
+  <div id="downloadRow">
+    <button class="secondary" id="dlZip">Download all (.zip)</button>
+    <button class="secondary" id="dlManifest">manifest.json</button>
+  </div>
+
+  <fieldset>
+    <legend>Calibration</legend>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:8px">
+      Print the coupon once per printer/material; use the snuggest clearance that fits by hand.
+    </div>
+    <button class="secondary" id="coupon">Download coupon (.zip)</button>
+  </fieldset>
+</aside>
+
+<main>
+  <div id="viewerWrap">
+    <div id="viewer"></div>
+    <div id="viewerHint">upload a model and chop it to see the pieces here</div>
+    <div id="explodeBar">
+      <label for="explode">explode</label>
+      <input id="explode" type="range" min="0" max="1" value="0.45" step="0.01">
+    </div>
+  </div>
+  <div id="results">
+    <h2>Pieces</h2>
+    <table>
+      <thead><tr><th>piece</th><th>bounding box (mm)</th><th>solid weight*</th><th>fits</th><th></th></tr></thead>
+      <tbody id="pieceRows"></tbody>
+    </table>
+    <div style="font-size:11px;color:var(--dim);margin-top:6px">
+      * solid PLA upper bound — real weight depends on infill. Assembly order is top to bottom; glue bottom-up.
+    </div>
+    <div id="warnings"></div>
+  </div>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three.module.min.js",
+  "three/addons/": "/vendor/addons/"
+} }
+</script>
+<script type="module">
+const $ = id => document.getElementById(id);
+let modelId = null, jobId = null, poller = null;
+
+// ---------- upload ----------
+const drop = $('drop'), fileInput = $('file');
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('armed'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('armed'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('armed');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+  setStatus(`<span class="spin"></span>uploading ${file.name}…`);
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const m = await res.json();
+    modelId = m.model_id;
+    const [x, y, z] = m.extents_mm;
+    $('modelInfo').textContent =
+      `${m.name}\n${x} × ${y} × ${z} mm · ${m.faces.toLocaleString()} faces` +
+      `\nwatertight: ${m.watertight ? 'yes' : 'no — will be repaired'}` +
+      (m.volume_cm3 ? ` · ${m.volume_cm3} cm³` : '');
+    drop.innerHTML = `<strong>${m.name}</strong><br>click to replace`;
+    drop.appendChild(fileInput);
+    $('chop').disabled = false;
+    setStatus('');
+  } catch (err) { setStatus(`upload failed: ${err.message}`, 'err'); }
+}
+
+// ---------- settings ----------
+$('preset').addEventListener('change', () =>
+  $('customVol').style.display = $('preset').value === 'custom' ? 'flex' : 'none');
+
+function buildConfig() {
+  let vol;
+  if ($('preset').value === 'custom')
+    vol = [+$('bx').value, +$('by').value, +$('bz').value];
+  else
+    vol = $('preset').value.split(',').map(Number);
+  const cfg = {
+    printer: { build_volume_mm: vol, clearance_mm: +$('clearance').value },
+    planner: { mode: $('mode').value },
+    connectors: { enabled: $('pins').checked, diameter_mm: +$('pinD').value, length_mm: +$('pinL').value },
+    labels: { enabled: $('labels').checked },
+    output: { formats: ['stl'] },
+  };
+  if ($('height').value) cfg.target_height_mm = +$('height').value;
+  return cfg;
+}
+
+// ---------- chop + poll ----------
+$('chop').addEventListener('click', async () => {
+  if (!modelId) return;
+  $('chop').disabled = true;
+  $('results').style.display = 'none';
+  $('downloadRow').style.display = 'none';
+  setStatus('<span class="spin"></span>starting…');
+  try {
+    const res = await fetch('/api/chop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId, config: buildConfig() }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    jobId = (await res.json()).job_id;
+    poller = setInterval(poll, 1000);
+  } catch (err) {
+    setStatus(`could not start: ${err.message}`, 'err');
+    $('chop').disabled = false;
+  }
+});
+
+async function poll() {
+  const res = await fetch(`/api/jobs/${jobId}`);
+  if (!res.ok) return;
+  const j = await res.json();
+  if (j.status === 'running' || j.status === 'queued')
+    setStatus(`<span class="spin"></span>${j.stage || 'working'}…`);
+  else if (j.status === 'error') {
+    clearInterval(poller);
+    setStatus(`failed: ${j.error}`, 'err');
+    $('chop').disabled = false;
+  } else if (j.status === 'done') {
+    clearInterval(poller);
+    const n = j.summary.pieces.length;
+    setStatus(`done — ${n} piece${n === 1 ? '' : 's'}, ${j.summary.connectors} pins`, 'ok');
+    $('chop').disabled = false;
+    showResults(j.summary);
+    loadPreview();
+  }
+}
+
+function setStatus(html, cls) { $('status').innerHTML = cls ? `<span class="${cls}">${html}</span>` : html; }
+
+// ---------- results table ----------
+function showResults(s) {
+  const rows = $('pieceRows');
+  rows.innerHTML = '';
+  for (const p of s.pieces) {
+    const tr = document.createElement('tr');
+    tr.className = 'piece';
+    tr.dataset.label = p.label;
+    tr.innerHTML =
+      `<td><b>${p.label}</b></td>` +
+      `<td>${p.obb_extents_mm.map(v => Math.round(v)).join(' × ')}</td>` +
+      `<td>${p.solid_pla_grams_max} g</td>` +
+      `<td><span class="chip ${p.fits_build_volume ? 'ok' : 'bad'}">${p.fits_build_volume ? 'fits' : 'too big'}</span></td>` +
+      `<td><a href="/api/jobs/${jobId}/pieces/${p.label}.stl" download>download</a></td>`;
+    tr.addEventListener('mouseenter', () => highlight(p.label, true));
+    tr.addEventListener('mouseleave', () => highlight(p.label, false));
+    rows.appendChild(tr);
+  }
+  $('warnings').textContent = (s.warnings || []).map(w => `⚠ ${w}`).join('\n');
+  $('results').style.display = 'block';
+  $('downloadRow').style.display = 'flex';
+  $('dlZip').onclick = () => location.href = `/api/jobs/${jobId}/all.zip`;
+  $('dlManifest').onclick = () => location.href = `/api/jobs/${jobId}/pieces/manifest.json`;
+}
+
+// ---------- 3D viewer ----------
+// three.js is served locally (/vendor); if it still fails to load, the app
+// (upload, chop, downloads) keeps working — only the preview goes dark
+let THREE, OrbitControls, GLTFLoader, viewerOK = false;
+let renderer, scene, camera, controls, pieceMeshes = [];
+function initViewer() {
+  const el = $('viewer');
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(devicePixelRatio);
+  el.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x12151a);
+  camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100000);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  scene.add(new THREE.HemisphereLight(0xdde7f0, 0x30363d, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  key.position.set(1, 2, 1.4);
+  scene.add(key);
+  const resize = () => {
+    const w = el.clientWidth, h = el.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(el); resize();
+  (function tick() { requestAnimationFrame(tick); controls.update(); renderer.render(scene, camera); })();
+}
+
+(async () => {
+  try {
+    THREE = await import('three');
+    ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
+    ({ GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js'));
+    initViewer();
+    viewerOK = true;
+  } catch (err) {
+    console.warn('3D viewer unavailable:', err);
+    $('viewerHint').textContent = '3D preview unavailable — piece downloads still work';
+  }
+})();
+
+let previewRoot = null;
+function loadPreview() {
+  if (!viewerOK) return;
+  new GLTFLoader().load(`/api/jobs/${jobId}/preview.glb`, gltf => {
+    if (previewRoot) scene.remove(previewRoot);
+    pieceMeshes = [];
+    const root = gltf.scene;
+    previewRoot = root;
+    root.rotation.x = -Math.PI / 2; // z-up (mm) -> three's y-up
+    scene.add(root);
+    root.updateMatrixWorld(true);
+    const meshes = [];
+    root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    // explode directions live in the model's own (pre-rotation) space:
+    // geometry coords are absolute in our GLB, node transforms are identity
+    const centers = meshes.map(m => {
+      m.geometry.computeBoundingBox();
+      return m.geometry.boundingBox.getCenter(new THREE.Vector3());
+    });
+    const center = centers.reduce((a, c) => a.add(c), new THREE.Vector3())
+      .divideScalar(Math.max(centers.length, 1));
+    meshes.forEach((mesh, i) => {
+      if (!mesh.geometry.attributes.normal) mesh.geometry.computeVertexNormals();
+      mesh.material = new THREE.MeshStandardMaterial({
+        vertexColors: !!mesh.geometry.attributes.color, color: 0xdddddd,
+        metalness: 0.05, roughness: 0.65,
+      });
+      pieceMeshes.push({
+        obj: mesh,
+        name: mesh.name || mesh.parent.name,
+        base: mesh.position.clone(),
+        dir: centers[i].clone().sub(center),
+        mat: mesh.material,
+      });
+    });
+    const global = new THREE.Box3().setFromObject(root);
+    const size = global.getSize(new THREE.Vector3()).length();
+    const wcenter = global.getCenter(new THREE.Vector3());
+    camera.position.copy(wcenter).add(new THREE.Vector3(size * 0.7, size * 0.45, size * 0.7));
+    controls.target.copy(wcenter);
+    camera.near = size / 1000; camera.far = size * 10; camera.updateProjectionMatrix();
+    $('viewerHint').style.display = 'none';
+    $('explodeBar').style.display = 'flex';
+    applyExplode();
+  }, undefined, err => setStatus(`preview failed to load: ${err.message || err}`, 'warn'));
+}
+
+function applyExplode() {
+  const t = +$('explode').value;
+  for (const p of pieceMeshes)
+    p.obj.position.copy(p.base).add(p.dir.clone().multiplyScalar(t * 0.9));
+}
+$('explode').addEventListener('input', applyExplode);
+
+function highlight(label, on) {
+  for (const p of pieceMeshes)
+    if (p.name === label && p.mat.emissive)
+      p.mat.emissive.setHex(on ? 0x2a6bbf : 0x000000);
+}
+
+// ---------- coupon ----------
+$('coupon').addEventListener('click', () =>
+  location.href = `/api/coupon.zip?diameter=${+$('pinD').value}&length=${+$('pinL').value}`);
+</script>
+</body>
+</html>
