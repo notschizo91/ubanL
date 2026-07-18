@@ -47,6 +47,18 @@ def _wait_done(client, job_id: str, timeout: float = 180.0) -> dict:
     raise TimeoutError("job did not finish")
 
 
+def test_upload_3mf(client):
+    mesh = trimesh.creation.icosphere(subdivisions=2, radius=40.0)
+    data = mesh.export(file_type="3mf")
+    res = client.post(
+        "/api/upload", files={"file": ("model.3mf", io.BytesIO(data), "model/3mf")}
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["watertight"] is True
+    assert abs(body["extents_mm"][0] - 80.0) < 1.0
+
+
 def test_index_served(client):
     res = client.get("/")
     assert res.status_code == 200
